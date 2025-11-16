@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -67,4 +68,50 @@ func GetTopDomains(w http.ResponseWriter, r *http.Request) {
 		topDomains[domain.Key] = domain.Value
 	}
 	json.NewEncoder(w).Encode(topDomains)
+}
+
+func ShortenURLHTML(w http.ResponseWriter, r *http.Request) {
+	url := r.FormValue("url")
+	if url == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("<div class='error'>URL is required</div>"))
+		return
+	}
+	shortURL, err := store.SaveURL(url)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("<div class='error'>" + err.Error() + "</div>"))
+		return
+	}
+	w.Write([]byte("<div class='result'>Short URL: <a href='" + shortURL + "' target='_blank'>" + shortURL + "</a></div>"))
+}
+
+func IndexPage(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/index.html")
+}
+
+func GetTopDomainsHTML(w http.ResponseWriter, r *http.Request) {
+	domainCounts, err := store.GetDomainCounts()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("<div class='error'>" + err.Error() + "</div>"))
+		return
+	}
+	type kv struct {
+		Key   string
+		Value int
+	}
+	var shortedDomains []kv
+	for k, v := range domainCounts {
+		shortedDomains = append(shortedDomains, kv{k, v})
+	}
+	sort.Slice(shortedDomains, func(i, j int) bool { return shortedDomains[i].Value > shortedDomains[j].Value })
+	w.Write([]byte("<ul>"))
+	for i, domain := range shortedDomains {
+		if i >= 3 {
+			break
+		}
+		w.Write([]byte("<li>" + domain.Key + " (" + fmt.Sprintf("%d", domain.Value) + ")</li>"))
+	}
+	w.Write([]byte("</ul>"))
 }
